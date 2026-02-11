@@ -1,5 +1,5 @@
 import { format } from 'sql-formatter';
-import type { SQLDialect, TableEntity, Column, Relationship } from '@/types/schema';
+import { SQLDialect, type TableEntity, type Column, type Relationship } from '@/types/schema';
 import * as postgres from './postgres';
 import * as mysql from './mysql';
 import * as sqlite from './sqlite';

@@ -78,7 +78,7 @@ export default function ProjectPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <h2 className="text-2xl font-semibold text-slate-900 mb-2">Project Not Found</h2>
-          <p className="text-slate-600 mb-6">The project you're looking for doesn't exist.</p>
+          <p className="text-slate-600 mb-6">The project you&apos;re looking for doesn&apos;t exist.</p>
           <Button onClick={() => router.push('/')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Projects

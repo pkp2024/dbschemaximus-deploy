@@ -6,14 +6,10 @@ import {
   Background,
   Controls,
   MiniMap,
-  Node,
-  Edge,
   Connection,
   useNodesState,
   useEdgesState,
-  addEdge,
   OnNodesChange,
-  OnEdgesChange,
   OnConnect,
   ConnectionMode,
   Panel,
@@ -21,8 +17,8 @@ import {
 import { useSchemaStore } from '@/lib/store/schemaStore';
 import { useCanvasStore } from '@/lib/store/canvasStore';
 import { useTables, useRelationships } from '@/hooks/useSchema';
-import TableNode from './TableNode';
-import RelationshipEdge from './RelationshipEdge';
+import TableNode, { type TableFlowNode, type TableNodeData } from './TableNode';
+import RelationshipEdge, { type RelationshipFlowEdge } from './RelationshipEdge';
 import { ReferentialAction } from '@/types/schema';
 
 interface SchemaCanvasProps {
@@ -54,7 +50,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   } = useCanvasStore();
 
   // Convert tables to React Flow nodes
-  const initialNodes: Node[] = useMemo(
+  const initialNodes: TableFlowNode[] = useMemo(
     () =>
       tables.map((table) => ({
         id: table.id,
@@ -70,7 +66,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   );
 
   // Convert relationships to React Flow edges
-  const initialEdges: Edge[] = useMemo(
+  const initialEdges: RelationshipFlowEdge[] = useMemo(
     () =>
       relationships.map((rel) => ({
         id: rel.id,
@@ -91,8 +87,8 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
     [relationships, deleteRelationship]
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState<TableFlowNode>(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<RelationshipFlowEdge>(initialEdges);
 
   // Update nodes when tables change
   useEffect(() => {
@@ -110,7 +106,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   }, [projectId, loadViewportFromDb]);
 
   // Handle node position changes
-  const handleNodesChange: OnNodesChange = useCallback(
+  const handleNodesChange: OnNodesChange<TableFlowNode> = useCallback(
     async (changes) => {
       onNodesChange(changes);
 
@@ -155,7 +151,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
 
   // Handle selection changes
   const handleSelectionChange = useCallback(
-    ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
+    ({ nodes, edges }: { nodes: TableFlowNode[]; edges: RelationshipFlowEdge[] }) => {
       if (nodes.length > 0) {
         setSelectedNode(nodes[0].id);
       } else if (edges.length > 0) {
@@ -182,7 +178,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
 
   // Handle delete key
   const handleNodesDelete = useCallback(
-    async (nodesToDelete: Node[]) => {
+    async (nodesToDelete: TableFlowNode[]) => {
       for (const node of nodesToDelete) {
         if (confirm(`Delete table "${node.data.table.name}"?`)) {
           if (onTableDelete) {
@@ -195,7 +191,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   );
 
   const handleEdgesDelete = useCallback(
-    async (edgesToDelete: Edge[]) => {
+    async (edgesToDelete: RelationshipFlowEdge[]) => {
       for (const edge of edgesToDelete) {
         await deleteRelationship(edge.id);
       }
@@ -204,7 +200,7 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   );
 
   return (
-    <ReactFlow
+    <ReactFlow<TableFlowNode, RelationshipFlowEdge>
       nodes={nodes}
       edges={edges}
       onNodesChange={handleNodesChange}
@@ -233,7 +229,8 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
       <Controls showInteractive={false} />
       <MiniMap
         nodeColor={(node) => {
-          return (node.data as any).table?.color || '#3B82F6';
+          const data = node.data as TableNodeData;
+          return data.table?.color || '#3B82F6';
         }}
         maskColor="rgba(0, 0, 0, 0.1)"
       />

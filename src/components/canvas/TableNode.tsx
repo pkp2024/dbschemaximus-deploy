@@ -1,16 +1,18 @@
 import { memo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { type Node, Handle, Position, NodeProps } from '@xyflow/react';
 import { useColumns } from '@/hooks/useSchema';
 import { Grip, Edit, Trash2, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TableEntity } from '@/types/schema';
 
-interface TableNodeData {
+export interface TableNodeData extends Record<string, unknown> {
   table: TableEntity;
   onEdit?: (tableId: string) => void;
   onDelete?: (tableId: string) => void;
 }
+
+export type TableFlowNode = Node<TableNodeData, 'table'>;
 
 function formatColumnType(
   dataType: string,
@@ -23,7 +25,7 @@ function formatColumnType(
   return dataType;
 }
 
-function TableNode({ data, selected }: NodeProps<TableNodeData>) {
+function TableNode({ data, selected }: NodeProps<TableFlowNode>) {
   const { table, onEdit, onDelete } = data;
   const columns = useColumns(table.id);
 
@@ -107,7 +109,7 @@ function TableNode({ data, selected }: NodeProps<TableNodeData>) {
               <div className="grid grid-cols-[1fr_auto] items-center gap-3 text-[13px] leading-5">
                 <div className="flex items-center gap-1.5 min-w-0">
                   {column.isPrimaryKey && (
-                    <Key className="w-3 h-3 text-amber-500 flex-shrink-0" title="Primary Key" />
+                    <Key className="w-3 h-3 text-amber-500 flex-shrink-0" />
                   )}
                   <span className={cn(
                     'font-medium truncate',
@@ -116,7 +118,7 @@ function TableNode({ data, selected }: NodeProps<TableNodeData>) {
                     {column.name}
                   </span>
                   {!column.isPrimaryKey && !column.nullable && (
-                    <span className="text-red-500 text-[10px] font-semibold" title="Not Null">*</span>
+                    <span className="text-red-500 text-[10px] font-semibold">*</span>
                   )}
                 </div>
                 <span className="font-mono text-xs tracking-tight text-slate-500 whitespace-nowrap">

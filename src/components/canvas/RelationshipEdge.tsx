@@ -1,13 +1,15 @@
 import { memo } from 'react';
-import { EdgeProps, getSmoothStepPath, EdgeLabelRenderer, BaseEdge } from '@xyflow/react';
+import { type Edge, EdgeProps, getSmoothStepPath, EdgeLabelRenderer, BaseEdge } from '@xyflow/react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Relationship } from '@/types/schema';
 
-interface RelationshipEdgeData {
+export interface RelationshipEdgeData extends Record<string, unknown> {
   relationship: Relationship;
   onDelete?: (relationshipId: string) => void;
 }
+
+export type RelationshipFlowEdge = Edge<RelationshipEdgeData, 'relationship'>;
 
 function RelationshipEdge({
   id,
@@ -19,7 +21,7 @@ function RelationshipEdge({
   targetPosition,
   data,
   selected,
-}: EdgeProps<RelationshipEdgeData>) {
+}: EdgeProps<RelationshipFlowEdge>) {
   const { relationship, onDelete } = data || {};
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({

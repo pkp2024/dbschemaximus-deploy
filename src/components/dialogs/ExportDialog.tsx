@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SQLDialect } from '@/types/schema';
 import { downloadJSON, downloadSQL, exportToSQL, exportToJSON } from '@/lib/export/exportSchema';
 import { exportToPng } from '@/lib/export/exportImage';
-import { Download, FileJson, Database, Image } from 'lucide-react';
+import { Download, FileJson, Database, Image as ImageIcon } from 'lucide-react';
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -92,7 +92,7 @@ export default function ExportDialog({ isOpen, onClose, projectId, projectName, 
               SQL
             </TabsTrigger>
             <TabsTrigger value="png" className="gap-2">
-              <Image className="w-4 h-4" />
+              <ImageIcon className="w-4 h-4" />
               PNG
             </TabsTrigger>
           </TabsList>
@@ -169,7 +169,7 @@ export default function ExportDialog({ isOpen, onClose, projectId, projectName, 
           <div className="border rounded-lg p-4 bg-slate-50 max-h-96 overflow-y-auto">
             {!preview ? (
               <p className="text-sm text-slate-500 text-center py-8">
-                Click "Generate Preview" to see the export output
+                Click &quot;Generate Preview&quot; to see the export output
               </p>
             ) : (
               <pre className="text-xs font-mono whitespace-pre-wrap">{preview}</pre>

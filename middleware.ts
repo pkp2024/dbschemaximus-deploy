@@ -1,6 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+function isEnabled(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
 function unauthorizedResponse() {
   return new NextResponse('Authentication required', {
     status: 401,
@@ -11,13 +17,12 @@ function unauthorizedResponse() {
 }
 
 export function middleware(request: NextRequest) {
-  const isEnabled = process.env.BASIC_AUTH_ENABLED === 'true';
-  if (!isEnabled) {
+  if (!isEnabled(process.env.BASIC_AUTH_ENABLED)) {
     return NextResponse.next();
   }
 
-  const expectedUsername = process.env.BASIC_AUTH_USER;
-  const expectedPassword = process.env.BASIC_AUTH_PASSWORD;
+  const expectedUsername = process.env.BASIC_AUTH_USER?.trim();
+  const expectedPassword = process.env.BASIC_AUTH_PASSWORD?.trim();
 
   if (!expectedUsername || !expectedPassword) {
     return new NextResponse('Basic auth enabled but credentials are not configured.', {

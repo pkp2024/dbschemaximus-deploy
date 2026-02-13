@@ -10,7 +10,7 @@ import {
 } from '@/lib/persistence/mode';
 
 export function usePersistenceMode() {
-  const [mode, setModeState] = useState<PersistenceMode>('frontend');
+  const [mode, setModeState] = useState<PersistenceMode>(() => getPersistenceMode());
 
   useEffect(() => {
     setModeState(getPersistenceMode());

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/server/sql';
 import { ensureDbSchema } from '@/lib/server/postgres';
+import { ReferentialAction } from '@/types/schema';
 import type {
   Column,
   Project,
@@ -9,7 +10,6 @@ import type {
   TableEntity,
   TablePosition,
   DataType,
-  ReferentialAction,
 } from '@/types/schema';
 
 export const runtime = 'nodejs';
@@ -236,24 +236,62 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   await sql`DELETE FROM schema_tables WHERE project_id = ${projectId}`;
 
-  for (const table of payload.tables) {
-    const tableId = table.id || crypto.randomUUID();
+  const tableIdMap = new Map<string, string>();
+  const columnIdMap = new Map<string, string>();
+
+  const normalizedTables = payload.tables.map((table, index) => {
+    const raw = table as TableEntity & {
+      project_id?: string;
+    };
+    const sourceId = raw.id || `__table_${index}`;
+    const tableId = raw.id || crypto.randomUUID();
+    tableIdMap.set(sourceId, tableId);
+
+    return {
+      id: tableId,
+      name: raw.name,
+      description: raw.description || null,
+      position: raw.position || { x: 0, y: 0 },
+      color: raw.color || null,
+      createdAt: raw.createdAt || now,
+    };
+  });
+
+  for (const table of normalizedTables) {
     await sql`
       INSERT INTO schema_tables (id, project_id, name, description, position, color, created_at, updated_at)
       VALUES (
-        ${tableId},
+        ${table.id},
         ${projectId},
         ${table.name},
-        ${table.description || null},
-        ${JSON.stringify(table.position || { x: 0, y: 0 })}::jsonb,
-        ${table.color || null},
-        ${table.createdAt || now},
+        ${table.description},
+        ${JSON.stringify(table.position)}::jsonb,
+        ${table.color},
+        ${table.createdAt},
         ${now}
       )
     `;
   }
 
-  for (const column of payload.columns) {
+  const normalizedColumns: Array<{
+    id: string;
+    tableId: string;
+    name: string;
+    dataType: string;
+    length: number | null;
+    precision: number | null;
+    scale: number | null;
+    nullable: boolean;
+    isPrimaryKey: boolean;
+    isUnique: boolean;
+    isAutoIncrement: boolean;
+    defaultValue: string | null;
+    description: string | null;
+    orderIndex: number;
+    createdAt: number;
+  }> = [];
+
+  for (const [index, column] of payload.columns.entries()) {
     const raw = column as Column & {
       table_id?: string;
       data_type?: string;
@@ -264,13 +302,38 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       order_index?: number;
     };
 
-    const tableId = raw.tableId || raw.table_id;
+    const sourceTableId = raw.tableId || raw.table_id;
+    const tableId = sourceTableId ? (tableIdMap.get(sourceTableId) || sourceTableId) : undefined;
     const dataType = raw.dataType || (raw.data_type as DataType | undefined);
 
     if (!tableId || !raw.name || !dataType) {
       continue;
     }
 
+    const sourceColumnId = raw.id || `__column_${index}`;
+    const columnId = raw.id || crypto.randomUUID();
+    columnIdMap.set(sourceColumnId, columnId);
+
+    normalizedColumns.push({
+      id: columnId,
+      tableId,
+      name: raw.name,
+      dataType,
+      length: raw.length ?? null,
+      precision: raw.precision ?? null,
+      scale: raw.scale ?? null,
+      nullable: raw.nullable ?? true,
+      isPrimaryKey: raw.isPrimaryKey ?? raw.is_primary_key ?? false,
+      isUnique: raw.isUnique ?? raw.is_unique ?? false,
+      isAutoIncrement: raw.isAutoIncrement ?? raw.is_auto_increment ?? false,
+      defaultValue: raw.defaultValue ?? raw.default_value ?? null,
+      description: raw.description ?? null,
+      orderIndex: raw.orderIndex ?? raw.order_index ?? 0,
+      createdAt: raw.createdAt || now,
+    });
+  }
+
+  for (const column of normalizedColumns) {
     await sql`
       INSERT INTO columns (
         id, table_id, name, data_type, length, precision, scale,
@@ -278,43 +341,66 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         default_value, description, order_index, created_at, updated_at
       )
       VALUES (
-        ${raw.id || crypto.randomUUID()},
-        ${tableId},
-        ${raw.name},
-        ${dataType},
-        ${raw.length ?? null},
-        ${raw.precision ?? null},
-        ${raw.scale ?? null},
-        ${raw.nullable ?? true},
-        ${raw.isPrimaryKey ?? raw.is_primary_key ?? false},
-        ${raw.isUnique ?? raw.is_unique ?? false},
-        ${raw.isAutoIncrement ?? raw.is_auto_increment ?? false},
-        ${raw.defaultValue ?? raw.default_value ?? null},
-        ${raw.description ?? null},
-        ${raw.orderIndex ?? raw.order_index ?? 0},
-        ${raw.createdAt || now},
+        ${column.id},
+        ${column.tableId},
+        ${column.name},
+        ${column.dataType},
+        ${column.length},
+        ${column.precision},
+        ${column.scale},
+        ${column.nullable},
+        ${column.isPrimaryKey},
+        ${column.isUnique},
+        ${column.isAutoIncrement},
+        ${column.defaultValue},
+        ${column.description},
+        ${column.orderIndex},
+        ${column.createdAt},
         ${now}
       )
     `;
   }
 
   for (const rel of payload.relationships) {
+    const raw = rel as Relationship & {
+      source_table_id?: string;
+      source_column_id?: string;
+      target_table_id?: string;
+      target_column_id?: string;
+      on_delete?: string;
+      on_update?: string;
+    };
+
+    const sourceTableId = raw.sourceTableId || raw.source_table_id;
+    const targetTableId = raw.targetTableId || raw.target_table_id;
+    const sourceColumnId = raw.sourceColumnId || raw.source_column_id;
+    const targetColumnId = raw.targetColumnId || raw.target_column_id;
+
+    const mappedSourceTableId = sourceTableId ? (tableIdMap.get(sourceTableId) || sourceTableId) : undefined;
+    const mappedTargetTableId = targetTableId ? (tableIdMap.get(targetTableId) || targetTableId) : undefined;
+    const mappedSourceColumnId = sourceColumnId ? (columnIdMap.get(sourceColumnId) || sourceColumnId) : undefined;
+    const mappedTargetColumnId = targetColumnId ? (columnIdMap.get(targetColumnId) || targetColumnId) : undefined;
+
+    if (!mappedSourceTableId || !mappedTargetTableId || !mappedSourceColumnId || !mappedTargetColumnId) {
+      continue;
+    }
+
     await sql`
       INSERT INTO relationships (
         id, project_id, name, source_table_id, source_column_id,
         target_table_id, target_column_id, on_delete, on_update, created_at, updated_at
       )
       VALUES (
-        ${rel.id || crypto.randomUUID()},
+        ${raw.id || crypto.randomUUID()},
         ${projectId},
-        ${rel.name || null},
-        ${rel.sourceTableId},
-        ${rel.sourceColumnId},
-        ${rel.targetTableId},
-        ${rel.targetColumnId},
-        ${rel.onDelete},
-        ${rel.onUpdate},
-        ${rel.createdAt || now},
+        ${raw.name || null},
+        ${mappedSourceTableId},
+        ${mappedSourceColumnId},
+        ${mappedTargetTableId},
+        ${mappedTargetColumnId},
+        ${(raw.onDelete || raw.on_delete || ReferentialAction.CASCADE) as string},
+        ${(raw.onUpdate || raw.on_update || ReferentialAction.CASCADE) as string},
+        ${raw.createdAt || now},
         ${now}
       )
     `;

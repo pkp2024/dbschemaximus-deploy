@@ -296,6 +296,58 @@ export async function moveTable(id: string, position: TablePosition): Promise<vo
   await updateTable(id, { position });
 }
 
+export async function moveTables(moves: Array<{ id: string; position: TablePosition }>): Promise<void> {
+  const latestPositionById = new Map<string, TablePosition>();
+  for (const move of moves) {
+    latestPositionById.set(move.id, move.position);
+  }
+
+  if (latestPositionById.size === 0) {
+    return;
+  }
+
+  const byProject = new Map<string, Array<{ id: string; position: TablePosition }>>();
+
+  for (const [tableId, position] of latestPositionById.entries()) {
+    let projectId = tableProjectMap.get(tableId);
+
+    if (!projectId) {
+      const tableMatch = await findTableById(tableId);
+      projectId = tableMatch?.schema.project.id;
+    }
+
+    if (!projectId) {
+      continue;
+    }
+
+    const list = byProject.get(projectId) ?? [];
+    list.push({ id: tableId, position });
+    byProject.set(projectId, list);
+  }
+
+  for (const [projectId, projectMoves] of byProject.entries()) {
+    const schema = await getProjectSchema(projectId);
+    const now = Date.now();
+    const positionById = new Map(projectMoves.map((move) => [move.id, move.position]));
+
+    schema.tables = schema.tables.map((table) => {
+      const position = positionById.get(table.id);
+      if (!position) {
+        return table;
+      }
+
+      return {
+        ...table,
+        position,
+        updatedAt: now,
+      };
+    });
+
+    schema.exportedAt = now;
+    await putProjectSchema(projectId, schema);
+  }
+}
+
 export async function deleteTable(id: string): Promise<void> {
   const match = await findTableById(id);
   if (!match) return;

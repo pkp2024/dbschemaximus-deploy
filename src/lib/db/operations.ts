@@ -120,6 +120,12 @@ export async function moveTable(id: string, position: TablePosition): Promise<vo
   await updateTable(id, { position });
 }
 
+export async function moveTables(moves: Array<{ id: string; position: TablePosition }>): Promise<void> {
+  for (const move of moves) {
+    await moveTable(move.id, move.position);
+  }
+}
+
 export async function deleteTable(id: string): Promise<void> {
   const table = await db.schemaTables.get(id);
   if (!table) return;

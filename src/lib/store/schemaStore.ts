@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { TableEntity, Column, Relationship, TablePosition } from '@/types/schema';
+import type { TableEntity, Column, Relationship, TablePosition, SchemaExport } from '@/types/schema';
 import * as dbOps from '@/lib/data/operations';
+import { getPersistenceMode } from '@/lib/persistence/mode';
 
 interface SchemaStore {
   // State
@@ -60,6 +61,31 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     set({ isLoading: true });
 
     try {
+      if (getPersistenceMode() === 'backend') {
+        const response = await fetch(`/api/projects/${projectId}/schema`);
+        const payload = await response.json().catch(() => null) as SchemaExport | { error?: string } | null;
+
+        if (!response.ok || !payload || !('tables' in payload) || !('columns' in payload) || !('relationships' in payload)) {
+          const message = payload && typeof payload === 'object' && 'error' in payload
+            ? String(payload.error)
+            : 'Failed to load project schema';
+          throw new Error(message);
+        }
+
+        const tablesMap = new Map(payload.tables.map((table) => [table.id, table]));
+        const columnsMap = new Map(payload.columns.map((column) => [column.id, column]));
+        const relationshipsMap = new Map(payload.relationships.map((relationship) => [relationship.id, relationship]));
+
+        set({
+          currentProjectId: projectId,
+          tables: tablesMap,
+          columns: columnsMap,
+          relationships: relationshipsMap,
+          isLoading: false,
+        });
+        return;
+      }
+
       // Load all tables for this project
       const tables = await dbOps.getTablesByProject(projectId);
       const tablesMap = new Map(tables.map(t => [t.id, t]));
@@ -190,10 +216,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       return { tables: nextTables };
     });
 
-    await Promise.all(
-      Array.from(latestPositionById.entries()).map(([id, position]) =>
-        dbOps.moveTable(id, position)
-      )
+    await dbOps.moveTables(
+      Array.from(latestPositionById.entries()).map(([id, position]) => ({ id, position }))
     );
   },
 

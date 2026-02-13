@@ -23,6 +23,7 @@ export const getTable: FrontendOps['getTable'] = async (...args) => (await resol
 export const getTablesByProject: FrontendOps['getTablesByProject'] = async (...args) => (await resolveOps()).getTablesByProject(...args);
 export const updateTable: FrontendOps['updateTable'] = async (...args) => (await resolveOps()).updateTable(...args);
 export const moveTable: FrontendOps['moveTable'] = async (...args) => (await resolveOps()).moveTable(...args);
+export const moveTables: FrontendOps['moveTables'] = async (...args) => (await resolveOps()).moveTables(...args);
 export const deleteTable: FrontendOps['deleteTable'] = async (...args) => (await resolveOps()).deleteTable(...args);
 
 export const createColumn: FrontendOps['createColumn'] = async (...args) => (await resolveOps()).createColumn(...args);

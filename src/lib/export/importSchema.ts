@@ -1,5 +1,13 @@
-import type { SchemaExport } from '@/types/schema';
+import type {
+  Column,
+  DataType,
+  ReferentialAction,
+  Relationship,
+  SchemaExport,
+  TableEntity,
+} from '@/types/schema';
 import * as dbOps from '@/lib/data/operations';
+import { getPersistenceMode } from '@/lib/persistence/mode';
 
 const IMPORT_LAYOUT = {
   startX: 100,
@@ -70,6 +78,17 @@ export async function importFromJSON(jsonString: string, projectId: string): Pro
   }
 
   const schema = validateSchemaExport(data);
+  const isBackendMode = getPersistenceMode() === 'backend';
+
+  if (isBackendMode) {
+    await importToBackend(schema, projectId);
+    return;
+  }
+
+  await importToFrontend(schema, projectId);
+}
+
+async function importToFrontend(schema: SchemaExport, projectId: string): Promise<void> {
   const existingTables = await dbOps.getTablesByProject(projectId);
   const maxExistingX = existingTables.length > 0
     ? Math.max(...existingTables.map((table) => table.position?.x ?? 0))
@@ -160,5 +179,138 @@ export async function importFromJSON(jsonString: string, projectId: string): Pro
     } catch (error) {
       console.warn('Skipping relationship:', error);
     }
+  }
+}
+
+async function importToBackend(schema: SchemaExport, projectId: string): Promise<void> {
+  const project = await dbOps.getProject(projectId);
+  if (!project) {
+    throw new Error('Project not found');
+  }
+
+  const existingResponse = await fetch(`/api/projects/${projectId}/schema`);
+  const existingSchema = existingResponse.ok
+    ? await existingResponse.json() as SchemaExport
+    : {
+      version: '1.0.0',
+      exportedAt: Date.now(),
+      project,
+      tables: [],
+      columns: [],
+      relationships: [],
+    };
+
+  const existingTables = existingSchema.tables;
+  const maxExistingX = existingTables.length > 0
+    ? Math.max(...existingTables.map((table) => table.position?.x ?? 0))
+    : null;
+  const minExistingY = existingTables.length > 0
+    ? Math.min(...existingTables.map((table) => table.position?.y ?? IMPORT_LAYOUT.startY))
+    : IMPORT_LAYOUT.startY;
+  const gridStartX = maxExistingX === null
+    ? IMPORT_LAYOUT.startX
+    : maxExistingX + IMPORT_LAYOUT.projectOffsetX;
+  const gridStartY = minExistingY;
+  const columnsPerRow = getImportGridColumns(schema.tables.length);
+  const now = Date.now();
+
+  const tableIdMap = new Map<string, string>();
+  const columnIdMap = new Map<string, string>();
+
+  const importedTables: TableEntity[] = schema.tables.map((table, index) => {
+    const row = Math.floor(index / columnsPerRow);
+    const column = index % columnsPerRow;
+    const newId = crypto.randomUUID();
+    tableIdMap.set(table.id, newId);
+
+    return {
+      ...table,
+      id: newId,
+      projectId,
+      position: {
+        x: gridStartX + column * IMPORT_LAYOUT.horizontalGap,
+        y: gridStartY + row * IMPORT_LAYOUT.verticalGap,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+
+  const importedColumns: Column[] = [];
+  for (const source of schema.columns) {
+    const newTableId = tableIdMap.get(source.tableId);
+    if (!newTableId) {
+      continue;
+    }
+
+    const newId = crypto.randomUUID();
+    columnIdMap.set(source.id, newId);
+
+    importedColumns.push({
+      ...source,
+      id: newId,
+      tableId: newTableId,
+      dataType: source.dataType as DataType,
+      nullable: source.nullable ?? true,
+      isPrimaryKey: source.isPrimaryKey ?? false,
+      isUnique: source.isUnique ?? false,
+      isAutoIncrement: source.isAutoIncrement ?? false,
+      orderIndex: source.orderIndex ?? 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const importedRelationships: Relationship[] = [];
+  for (const rel of schema.relationships) {
+    const sourceTableId = tableIdMap.get(rel.sourceTableId);
+    const targetTableId = tableIdMap.get(rel.targetTableId);
+    const sourceColumnId = columnIdMap.get(rel.sourceColumnId);
+    const targetColumnId = columnIdMap.get(rel.targetColumnId);
+
+    if (!sourceTableId || !targetTableId || !sourceColumnId || !targetColumnId) {
+      continue;
+    }
+
+    importedRelationships.push({
+      ...rel,
+      id: crypto.randomUUID(),
+      projectId,
+      sourceTableId,
+      targetTableId,
+      sourceColumnId,
+      targetColumnId,
+      onDelete: rel.onDelete as ReferentialAction,
+      onUpdate: rel.onUpdate as ReferentialAction,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const merged: SchemaExport = {
+    version: '1.0.0',
+    exportedAt: now,
+    project: {
+      ...existingSchema.project,
+      name: project.name,
+      description: project.description,
+      updatedAt: now,
+    },
+    tables: [...existingSchema.tables, ...importedTables],
+    columns: [...existingSchema.columns, ...importedColumns],
+    relationships: [...existingSchema.relationships, ...importedRelationships],
+  };
+
+  const putResponse = await fetch(`/api/projects/${projectId}/schema`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(merged),
+  });
+
+  if (!putResponse.ok) {
+    const errorBody = await putResponse.json().catch(() => null) as { error?: string } | null;
+    throw new Error(errorBody?.error || 'Failed to import schema');
   }
 }

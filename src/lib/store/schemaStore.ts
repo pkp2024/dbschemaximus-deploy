@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { TableEntity, Column, Relationship, TablePosition } from '@/types/schema';
-import * as dbOps from '@/lib/db/operations';
+import * as dbOps from '@/lib/data/operations';
 
 interface SchemaStore {
   // State
@@ -19,6 +19,7 @@ interface SchemaStore {
   addTable: (table: Omit<TableEntity, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   updateTable: (id: string, updates: Partial<Omit<TableEntity, 'id' | 'projectId' | 'createdAt'>>) => Promise<void>;
   deleteTable: (id: string) => Promise<void>;
+  moveTables: (moves: Array<{ id: string; position: TablePosition }>) => Promise<void>;
   moveTable: (id: string, position: TablePosition) => Promise<void>;
   duplicateTable: (id: string, position?: TablePosition) => Promise<string>;
 
@@ -167,17 +168,37 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     });
   },
 
-  moveTable: async (id, position) => {
-    await dbOps.moveTable(id, position);
-    const table = await dbOps.getTable(id);
-
-    if (table) {
-      set(state => {
-        const newTables = new Map(state.tables);
-        newTables.set(id, table);
-        return { tables: newTables };
-      });
+  moveTables: async (moves) => {
+    const latestPositionById = new Map<string, TablePosition>();
+    for (const move of moves) {
+      latestPositionById.set(move.id, move.position);
     }
+
+    if (latestPositionById.size === 0) {
+      return;
+    }
+
+    const updatedAt = Date.now();
+    set((state) => {
+      const nextTables = new Map(state.tables);
+      for (const [id, position] of latestPositionById) {
+        const table = nextTables.get(id);
+        if (table) {
+          nextTables.set(id, { ...table, position, updatedAt });
+        }
+      }
+      return { tables: nextTables };
+    });
+
+    await Promise.all(
+      Array.from(latestPositionById.entries()).map(([id, position]) =>
+        dbOps.moveTable(id, position)
+      )
+    );
+  },
+
+  moveTable: async (id, position) => {
+    await get().moveTables([{ id, position }]);
   },
 
   duplicateTable: async (id, position) => {

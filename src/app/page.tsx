@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Database, Trash2, Calendar } from 'lucide-react';
+import PersistenceModeToggle from '@/components/persistence/PersistenceModeToggle';
 
 export default function HomePage() {
   const router = useRouter();
@@ -47,9 +48,12 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-12 max-w-7xl">
         {/* Header */}
         <div className="mb-12">
-          <div className="flex items-center gap-3 mb-4">
-            <Database className="w-10 h-10 text-primary" />
-            <h1 className="text-4xl font-bold text-slate-900">DrawSQL Clone</h1>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <Database className="w-10 h-10 text-primary" />
+              <h1 className="text-4xl font-bold text-slate-900">DrawSQL Clone</h1>
+            </div>
+            <PersistenceModeToggle />
           </div>
           <p className="text-lg text-slate-600">
             Design and visualize database schemas with an intuitive drag-and-drop interface

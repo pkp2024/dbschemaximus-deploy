@@ -13,6 +13,7 @@ import {
   OnConnect,
   ConnectionMode,
   Panel,
+  SelectionMode,
 } from '@xyflow/react';
 import { useSchemaStore } from '@/lib/store/schemaStore';
 import { useCanvasStore } from '@/lib/store/canvasStore';
@@ -20,6 +21,7 @@ import { useTables, useRelationships } from '@/hooks/useSchema';
 import TableNode, { type TableFlowNode, type TableNodeData } from './TableNode';
 import RelationshipEdge, { type RelationshipFlowEdge } from './RelationshipEdge';
 import { ReferentialAction } from '@/types/schema';
+import { usePersistenceMode } from '@/hooks/usePersistenceMode';
 
 interface SchemaCanvasProps {
   projectId: string;
@@ -36,9 +38,10 @@ const edgeTypes = {
 };
 
 export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: SchemaCanvasProps) {
+  const { mode } = usePersistenceMode();
   const tables = useTables();
   const relationships = useRelationships();
-  const { moveTable, addRelationship, deleteRelationship } = useSchemaStore();
+  const { moveTables, deleteTable, addRelationship, deleteRelationship } = useSchemaStore();
   const {
     setSelectedNode,
     setSelectedEdge,
@@ -103,21 +106,27 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   // Load saved viewport on mount
   useEffect(() => {
     loadViewportFromDb(projectId);
-  }, [projectId, loadViewportFromDb]);
+  }, [projectId, loadViewportFromDb, mode]);
 
   // Handle node position changes
   const handleNodesChange: OnNodesChange<TableFlowNode> = useCallback(
     async (changes) => {
       onNodesChange(changes);
 
-      // Save position changes to database
-      for (const change of changes) {
-        if (change.type === 'position' && change.position && change.dragging === false) {
-          await moveTable(change.id, change.position);
-        }
+      const moves = changes
+        .filter((change): change is { type: 'position'; id: string; position: { x: number; y: number }; dragging?: boolean } =>
+          change.type === 'position' && Boolean(change.position) && change.dragging === false
+        )
+        .map((change) => ({
+          id: change.id,
+          position: change.position,
+        }));
+
+      if (moves.length > 0) {
+        await moveTables(moves);
       }
     },
-    [onNodesChange, moveTable]
+    [onNodesChange, moveTables]
   );
 
   // Handle connection creation
@@ -179,15 +188,25 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
   // Handle delete key
   const handleNodesDelete = useCallback(
     async (nodesToDelete: TableFlowNode[]) => {
+      if (nodesToDelete.length === 0) {
+        return;
+      }
+
+      const isMultiDelete = nodesToDelete.length > 1;
+      const names = nodesToDelete.map((node) => node.data.table.name);
+      const confirmed = isMultiDelete
+        ? confirm(`Delete ${nodesToDelete.length} tables (${names.join(', ')})?`)
+        : confirm(`Delete table "${names[0]}"?`);
+
+      if (!confirmed) {
+        return;
+      }
+
       for (const node of nodesToDelete) {
-        if (confirm(`Delete table "${node.data.table.name}"?`)) {
-          if (onTableDelete) {
-            onTableDelete(node.id);
-          }
-        }
+        await deleteTable(node.id);
       }
     },
-    [onTableDelete]
+    [deleteTable]
   );
 
   const handleEdgesDelete = useCallback(
@@ -214,6 +233,9 @@ export default function SchemaCanvas({ projectId, onTableEdit, onTableDelete }: 
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       connectionMode={ConnectionMode.Loose}
+      selectionKeyCode="Shift"
+      selectionMode={SelectionMode.Partial}
+      panOnDrag
       defaultViewport={viewport}
       fitView
       fitViewOptions={{

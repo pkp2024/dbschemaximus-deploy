@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import * as dbOps from '@/lib/db/operations';
+import * as dbOps from '@/lib/data/operations';
 import type { Project } from '@/types/schema';
+import { usePersistenceMode } from '@/hooks/usePersistenceMode';
 
 export function useProjects() {
+  const { mode } = usePersistenceMode();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -22,7 +24,7 @@ export function useProjects() {
 
   useEffect(() => {
     loadProjects();
-  }, [loadProjects]);
+  }, [loadProjects, mode]);
 
   const createProject = useCallback(async (name: string, description?: string) => {
     const id = await dbOps.createProject({ name, description });
@@ -52,6 +54,7 @@ export function useProjects() {
 }
 
 export function useProject(projectId: string | null) {
+  const { mode } = usePersistenceMode();
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -70,7 +73,7 @@ export function useProject(projectId: string | null) {
     };
 
     loadProject();
-  }, [projectId]);
+  }, [projectId, mode]);
 
   return { project, isLoading };
 }

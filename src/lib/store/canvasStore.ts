@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Viewport } from '@xyflow/react';
-import * as dbOps from '@/lib/db/operations';
+import * as dbOps from '@/lib/data/operations';
 
 interface CanvasStore {
   // State

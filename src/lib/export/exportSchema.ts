@@ -1,6 +1,6 @@
 import { saveAs } from 'file-saver';
 import type { Project, TableEntity, Column, Relationship, SchemaExport, SQLDialect } from '@/types/schema';
-import * as dbOps from '@/lib/db/operations';
+import * as dbOps from '@/lib/data/operations';
 import { generateSQL } from '@/lib/sql-generator';
 
 export async function exportToJSON(projectId: string): Promise<SchemaExport> {

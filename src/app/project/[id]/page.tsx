@@ -13,32 +13,35 @@ import TableEditor from '@/components/table/TableEditor';
 import ExportDialogWrapper from '@/components/dialogs/ExportDialogWrapper';
 import ImportDialog from '@/components/dialogs/ImportDialog';
 import PropertiesPanel from '@/components/sidebar/PropertiesPanel';
+import PersistenceModeToggle from '@/components/persistence/PersistenceModeToggle';
+import { usePersistenceMode } from '@/hooks/usePersistenceMode';
 
 export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const { mode } = usePersistenceMode();
 
   const { project, isLoading: isProjectLoading } = useProject(projectId);
   const { loadProject, clearProject, deleteTable, isLoading: isSchemaLoading } = useSchemaStore();
   const tables = useTables();
 
-  const [isInitialized, setIsInitialized] = useState(false);
   const [isTableEditorOpen, setIsTableEditorOpen] = useState(false);
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (projectId && !isInitialized) {
+    if (projectId) {
       loadProject(projectId);
-      setIsInitialized(true);
     }
+  }, [projectId, loadProject, mode]);
 
+  useEffect(() => {
     return () => {
       clearProject();
     };
-  }, [projectId, loadProject, clearProject, isInitialized]);
+  }, [clearProject]);
 
   const handleAddTable = () => {
     setEditingTableId(null);
@@ -108,6 +111,7 @@ export default function ProjectPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <PersistenceModeToggle compact />
           <Button variant="outline" size="sm" onClick={() => setIsImportDialogOpen(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import

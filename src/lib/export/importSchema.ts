@@ -1,5 +1,5 @@
 import type { SchemaExport } from '@/types/schema';
-import * as dbOps from '@/lib/db/operations';
+import * as dbOps from '@/lib/data/operations';
 
 const IMPORT_LAYOUT = {
   startX: 100,

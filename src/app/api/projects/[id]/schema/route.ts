@@ -234,6 +234,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     `;
   }
 
+  // Explicitly delete in dependency order to avoid relying on CASCADE constraints
+  // that may not be present on databases created before they were added.
+  await sql`DELETE FROM relationships WHERE project_id = ${projectId}`;
+  await sql`DELETE FROM columns WHERE table_id IN (SELECT id FROM schema_tables WHERE project_id = ${projectId})`;
   await sql`DELETE FROM schema_tables WHERE project_id = ${projectId}`;
 
   const tableIdMap = new Map<string, string>();

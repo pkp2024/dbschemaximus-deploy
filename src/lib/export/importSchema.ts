@@ -1,7 +1,7 @@
+import { ReferentialAction } from '@/types/schema';
 import type {
   Column,
   DataType,
-  ReferentialAction,
   Relationship,
   SchemaExport,
   TableEntity,
@@ -139,13 +139,13 @@ async function importToFrontend(schema: SchemaExport, projectId: string): Promis
       length: column.length,
       precision: column.precision,
       scale: column.scale,
-      nullable: column.nullable,
-      isPrimaryKey: column.isPrimaryKey,
-      isUnique: column.isUnique,
-      isAutoIncrement: column.isAutoIncrement,
+      nullable: column.nullable ?? true,
+      isPrimaryKey: column.isPrimaryKey ?? false,
+      isUnique: column.isUnique ?? false,
+      isAutoIncrement: column.isAutoIncrement ?? false,
       defaultValue: column.defaultValue,
       description: column.description,
-      orderIndex: column.orderIndex,
+      orderIndex: column.orderIndex ?? 0,
     });
     columnIdMap.set(column.id, newColumnId);
   }
@@ -170,8 +170,8 @@ async function importToFrontend(schema: SchemaExport, projectId: string): Promis
         sourceColumnId: newSourceColumnId,
         targetTableId: newTargetTableId,
         targetColumnId: newTargetColumnId,
-        onDelete: rel.onDelete,
-        onUpdate: rel.onUpdate,
+        onDelete: rel.onDelete ?? ReferentialAction.CASCADE,
+        onUpdate: rel.onUpdate ?? ReferentialAction.CASCADE,
       }, {
         // External schemas may use compatible (but not exactly equal) data types for FK columns.
         validateDataTypes: false,
@@ -280,8 +280,8 @@ async function importToBackend(schema: SchemaExport, projectId: string): Promise
       targetTableId,
       sourceColumnId,
       targetColumnId,
-      onDelete: rel.onDelete as ReferentialAction,
-      onUpdate: rel.onUpdate as ReferentialAction,
+      onDelete: (rel.onDelete ?? ReferentialAction.CASCADE) as ReferentialAction,
+      onUpdate: (rel.onUpdate ?? ReferentialAction.CASCADE) as ReferentialAction,
       createdAt: now,
       updatedAt: now,
     });

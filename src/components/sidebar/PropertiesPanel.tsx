@@ -122,7 +122,6 @@ export default function PropertiesPanel() {
 
   const handleUpdateColumn = async (columnId: string, updates: Partial<Column>) => {
     await updateColumn(columnId, updates);
-    setEditingColumnId(null);
   };
 
   const handleDeleteColumn = async (columnId: string) => {
@@ -418,8 +417,9 @@ export default function PropertiesPanel() {
                                   {editingColumnId === column.id && (
                                     <div className="pt-2 space-y-2 border-t">
                                       <Input
-                                        value={column.name}
-                                        onChange={(e) => handleUpdateColumn(column.id, { name: e.target.value })}
+                                        key={column.id + '-name'}
+                                        defaultValue={column.name}
+                                        onBlur={(e) => handleUpdateColumn(column.id, { name: e.target.value })}
                                         className="h-7 text-sm"
                                         placeholder="Column name"
                                       />

@@ -1,8 +1,11 @@
-import { memo } from 'react';
+import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { type Node, Handle, Position, NodeProps } from '@xyflow/react';
 import { useColumns } from '@/hooks/useSchema';
+import { useSchemaStore } from '@/lib/store/schemaStore';
+import { useCanvasStore } from '@/lib/store/canvasStore';
 import { Grip, Edit, Trash2, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { TableEntity } from '@/types/schema';
 
@@ -28,6 +31,44 @@ function formatColumnType(
 function TableNode({ data, selected }: NodeProps<TableFlowNode>) {
   const { table, onEdit, onDelete } = data;
   const columns = useColumns(table.id);
+  const selectedColumnId = useCanvasStore((s) => s.selectedColumnId);
+  const setSelectedColumn = useCanvasStore((s) => s.setSelectedColumn);
+  const updateColumn = useSchemaStore((s) => s.updateColumn);
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingColumnId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingColumnId]);
+
+  const handleColumnClick = useCallback((e: React.MouseEvent, columnId: string) => {
+    e.stopPropagation();
+    setSelectedColumn(columnId);
+  }, [setSelectedColumn]);
+
+  const handleColumnDoubleClick = useCallback((e: React.MouseEvent, columnId: string) => {
+    e.stopPropagation();
+    setEditingColumnId(columnId);
+  }, []);
+
+  const handleRenameBlur = useCallback(async (columnId: string, value: string) => {
+    const trimmed = value.trim();
+    if (trimmed) {
+      await updateColumn(columnId, { name: trimmed });
+    }
+    setEditingColumnId(null);
+  }, [updateColumn]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, columnId: string) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      setEditingColumnId(null);
+    }
+  }, []);
 
   return (
     <div
@@ -88,7 +129,12 @@ function TableNode({ data, selected }: NodeProps<TableFlowNode>) {
           columns.map((column) => (
             <div
               key={column.id}
-              className="px-4 py-2 hover:bg-slate-50 relative group/column border-b border-slate-100 last:border-b-0"
+              className={cn(
+                'px-4 py-2 hover:bg-slate-50 relative group/column border-b border-slate-100 last:border-b-0 cursor-pointer transition-colors',
+                selectedColumnId === column.id && 'bg-primary/10 hover:bg-primary/15'
+              )}
+              onClick={(e) => handleColumnClick(e, column.id)}
+              onDoubleClick={(e) => handleColumnDoubleClick(e, column.id)}
             >
               {/* Connection handles for relationships */}
               <Handle
@@ -111,14 +157,28 @@ function TableNode({ data, selected }: NodeProps<TableFlowNode>) {
                   {column.isPrimaryKey && (
                     <Key className="w-3 h-3 text-amber-500 flex-shrink-0" />
                   )}
-                  <span className={cn(
-                    'font-medium truncate',
-                    column.isPrimaryKey && 'text-amber-700'
-                  )}>
-                    {column.name}
-                  </span>
-                  {!column.isPrimaryKey && !column.nullable && (
-                    <span className="text-red-500 text-[10px] font-semibold">*</span>
+                  {editingColumnId === column.id ? (
+                    <Input
+                      ref={editInputRef}
+                      defaultValue={column.name}
+                      onBlur={(e) => handleRenameBlur(column.id, e.target.value)}
+                      onKeyDown={(e) => handleRenameKeyDown(e, column.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className="h-6 text-[13px] font-medium px-1 py-0 border-primary"
+                    />
+                  ) : (
+                    <>
+                      <span className={cn(
+                        'font-medium truncate',
+                        column.isPrimaryKey && 'text-amber-700'
+                      )}>
+                        {column.name}
+                      </span>
+                      {!column.isPrimaryKey && !column.nullable && (
+                        <span className="text-red-500 text-[10px] font-semibold">*</span>
+                      )}
+                    </>
                   )}
                 </div>
                 <span className="font-mono text-xs tracking-tight text-slate-500 whitespace-nowrap">

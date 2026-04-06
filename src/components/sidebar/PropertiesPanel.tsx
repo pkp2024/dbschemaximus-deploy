@@ -20,6 +20,8 @@ interface NewColumnForm {
   name: string;
   dataType: DataType;
   length?: number;
+  precision?: number;
+  scale?: number;
   nullable: boolean;
   isPrimaryKey: boolean;
   isUnique: boolean;
@@ -138,6 +140,8 @@ export default function PropertiesPanel() {
       name: newColumn.name,
       dataType: newColumn.dataType,
       length: newColumn.length,
+      precision: newColumn.precision,
+      scale: newColumn.scale,
       nullable: newColumn.nullable,
       isPrimaryKey: newColumn.isPrimaryKey,
       isUnique: newColumn.isUnique,
@@ -315,6 +319,25 @@ export default function PropertiesPanel() {
                                 />
                               )}
 
+                              {(newColumn.dataType === DataType.DECIMAL || newColumn.dataType === DataType.NUMERIC) && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <Input
+                                    type="number"
+                                    placeholder="Precision"
+                                    value={newColumn.precision || ''}
+                                    onChange={(e) => setNewColumn({ ...newColumn, precision: parseInt(e.target.value, 10) || undefined })}
+                                    className="h-8 text-sm"
+                                  />
+                                  <Input
+                                    type="number"
+                                    placeholder="Scale"
+                                    value={newColumn.scale || ''}
+                                    onChange={(e) => setNewColumn({ ...newColumn, scale: parseInt(e.target.value, 10) || undefined })}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                              )}
+
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2">
                                   <Checkbox
@@ -415,7 +438,7 @@ export default function PropertiesPanel() {
                                   </div>
 
                                   {editingColumnId === column.id && (
-                                    <div className="pt-2 space-y-2 border-t">
+                                    <div className="pt-2 space-y-2 border-t" onClick={(e) => e.stopPropagation()}>
                                       <Input
                                         key={column.id + '-name'}
                                         defaultValue={column.name}
@@ -438,6 +461,38 @@ export default function PropertiesPanel() {
                                           ))}
                                         </SelectContent>
                                       </Select>
+
+                                      {(column.dataType === DataType.VARCHAR || column.dataType === DataType.CHAR) && (
+                                        <Input
+                                          key={column.id + '-length'}
+                                          type="number"
+                                          placeholder="Length"
+                                          defaultValue={column.length || ''}
+                                          onBlur={(e) => handleUpdateColumn(column.id, { length: parseInt(e.target.value, 10) || undefined })}
+                                          className="h-7 text-sm"
+                                        />
+                                      )}
+
+                                      {(column.dataType === DataType.DECIMAL || column.dataType === DataType.NUMERIC) && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <Input
+                                            key={column.id + '-precision'}
+                                            type="number"
+                                            placeholder="Precision"
+                                            defaultValue={column.precision || ''}
+                                            onBlur={(e) => handleUpdateColumn(column.id, { precision: parseInt(e.target.value, 10) || undefined })}
+                                            className="h-7 text-sm"
+                                          />
+                                          <Input
+                                            key={column.id + '-scale'}
+                                            type="number"
+                                            placeholder="Scale"
+                                            defaultValue={column.scale || ''}
+                                            onBlur={(e) => handleUpdateColumn(column.id, { scale: parseInt(e.target.value, 10) || undefined })}
+                                            className="h-7 text-sm"
+                                          />
+                                        </div>
+                                      )}
 
                                       <div className="grid grid-cols-2 gap-2">
                                         <div className="flex items-center gap-2">

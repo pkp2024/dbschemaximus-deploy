@@ -38,6 +38,7 @@ function formatColumnType(column: Pick<Column, 'dataType' | 'length' | 'precisio
 
 export default function PropertiesPanel() {
   const { selectedNodeId, setSelectedNode } = useCanvasStore();
+  const selectedColumnId = useCanvasStore((s) => s.selectedColumnId);
   const table = useTable(selectedNodeId);
   const columns = useColumns(selectedNodeId);
   const allTables = useTables();
@@ -96,6 +97,28 @@ export default function PropertiesPanel() {
       return next;
     });
   }, [allTables, selectedNodeId]);
+
+  // When a column is clicked in the canvas, open it for editing in the sidebar
+  useEffect(() => {
+    if (!selectedColumnId) return;
+
+    // Find which table this column belongs to
+    const column = allColumnsMap.get(selectedColumnId);
+    if (!column) return;
+
+    // Ensure the table is selected and expanded
+    if (selectedNodeId !== column.tableId) {
+      setSelectedNode(column.tableId);
+    }
+    setExpandedTableIds((prev) => {
+      const next = new Set(prev);
+      next.add(column.tableId);
+      return next;
+    });
+
+    // Open the column's edit form
+    setEditingColumnId(selectedColumnId);
+  }, [selectedColumnId, allColumnsMap, selectedNodeId, setSelectedNode]);
 
   const handleSelectAndToggleTable = (tableId: string) => {
     setSelectedNode(tableId);
@@ -406,6 +429,8 @@ export default function PropertiesPanel() {
                                 onDragEnd={handleColumnDragEnd}
                                 className={`p-3 hover:shadow-md transition-shadow cursor-pointer ${
                                   dragOverColumnId === column.id ? 'ring-2 ring-primary/50 border-primary/40' : ''
+                                } ${
+                                  selectedColumnId === column.id ? 'border-primary bg-primary/5' : ''
                                 }`}
                                 onClick={() => setEditingColumnId(editingColumnId === column.id ? null : column.id)}
                               >

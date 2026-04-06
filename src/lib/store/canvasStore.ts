@@ -6,11 +6,13 @@ interface CanvasStore {
   // State
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  selectedColumnId: string | null;
   viewport: Viewport;
 
   // Actions
   setSelectedNode: (nodeId: string | null) => void;
   setSelectedEdge: (edgeId: string | null) => void;
+  setSelectedColumn: (columnId: string | null) => void;
   clearSelection: () => void;
   setViewport: (viewport: Viewport) => void;
   saveViewportToDb: (projectId: string) => Promise<void>;
@@ -21,19 +23,24 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Initial state
   selectedNodeId: null,
   selectedEdgeId: null,
+  selectedColumnId: null,
   viewport: { x: 0, y: 0, zoom: 1 },
 
   // Actions
   setSelectedNode: (nodeId: string | null) => {
-    set({ selectedNodeId: nodeId, selectedEdgeId: null });
+    set({ selectedNodeId: nodeId, selectedEdgeId: null, selectedColumnId: null });
   },
 
   setSelectedEdge: (edgeId: string | null) => {
-    set({ selectedEdgeId: edgeId, selectedNodeId: null });
+    set({ selectedEdgeId: edgeId, selectedNodeId: null, selectedColumnId: null });
+  },
+
+  setSelectedColumn: (columnId: string | null) => {
+    set({ selectedColumnId: columnId });
   },
 
   clearSelection: () => {
-    set({ selectedNodeId: null, selectedEdgeId: null });
+    set({ selectedNodeId: null, selectedEdgeId: null, selectedColumnId: null });
   },
 
   setViewport: (viewport: Viewport) => {

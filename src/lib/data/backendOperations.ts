@@ -92,20 +92,25 @@ async function putProjectSchema(projectId: string, schema: SchemaExport): Promis
   indexSchema(schema);
 }
 
-const schemaOpLocks = new Map<string, Promise<void>>();
+// Global lock that serializes ALL schema mutations to prevent concurrent
+// read-modify-write cycles from overwriting each other's changes.
+let schemaLock: Promise<void> = Promise.resolve();
 
-async function withSchemaLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
-  const previous = schemaOpLocks.get(projectId) ?? Promise.resolve();
+function withSchemaLock<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = schemaLock;
   let resolve: () => void;
-  const current = new Promise<void>((r) => { resolve = r; });
-  schemaOpLocks.set(projectId, current);
+  schemaLock = new Promise<void>((r) => { resolve = r; });
 
-  await previous;
-  try {
-    return await fn();
-  } finally {
-    resolve!();
-  }
+  const run = async (): Promise<T> => {
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      resolve!();
+    }
+  };
+
+  return run();
 }
 
 async function getAllSchemas(): Promise<SchemaExport[]> {
@@ -262,7 +267,7 @@ export async function deleteProject(id: string): Promise<void> {
 export async function createTable(
   data: Omit<TableEntity, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
-  return withSchemaLock(data.projectId, async () => {
+  return withSchemaLock(async () => {
     const schema = await getProjectSchema(data.projectId);
     const now = Date.now();
     const table: TableEntity = {
@@ -294,8 +299,7 @@ export async function updateTable(
   id: string,
   updates: Partial<Omit<TableEntity, 'id' | 'projectId' | 'createdAt'>>
 ): Promise<void> {
-  const projectId = tableProjectMap.get(id);
-  const run = async () => {
+  return withSchemaLock(async () => {
     const match = await findTableById(id);
     if (!match) throw new Error('Table not found');
 
@@ -310,12 +314,7 @@ export async function updateTable(
     match.schema.exportedAt = now;
 
     await putProjectSchema(nextTable.projectId, match.schema);
-  };
-
-  if (projectId) {
-    return withSchemaLock(projectId, run);
-  }
-  return run();
+  });
 }
 
 export async function moveTable(id: string, position: TablePosition): Promise<void> {
@@ -332,51 +331,52 @@ export async function moveTables(moves: Array<{ id: string; position: TablePosit
     return;
   }
 
-  const byProject = new Map<string, Array<{ id: string; position: TablePosition }>>();
+  return withSchemaLock(async () => {
+    const byProject = new Map<string, Array<{ id: string; position: TablePosition }>>();
 
-  for (const [tableId, position] of latestPositionById.entries()) {
-    let projectId = tableProjectMap.get(tableId);
+    for (const [tableId, position] of latestPositionById.entries()) {
+      let projectId = tableProjectMap.get(tableId);
 
-    if (!projectId) {
-      const tableMatch = await findTableById(tableId);
-      projectId = tableMatch?.schema.project.id;
-    }
-
-    if (!projectId) {
-      continue;
-    }
-
-    const list = byProject.get(projectId) ?? [];
-    list.push({ id: tableId, position });
-    byProject.set(projectId, list);
-  }
-
-  for (const [projectId, projectMoves] of byProject.entries()) {
-    const schema = await getProjectSchema(projectId);
-    const now = Date.now();
-    const positionById = new Map(projectMoves.map((move) => [move.id, move.position]));
-
-    schema.tables = schema.tables.map((table) => {
-      const position = positionById.get(table.id);
-      if (!position) {
-        return table;
+      if (!projectId) {
+        const tableMatch = await findTableById(tableId);
+        projectId = tableMatch?.schema.project.id;
       }
 
-      return {
-        ...table,
-        position,
-        updatedAt: now,
-      };
-    });
+      if (!projectId) {
+        continue;
+      }
 
-    schema.exportedAt = now;
-    await putProjectSchema(projectId, schema);
-  }
+      const list = byProject.get(projectId) ?? [];
+      list.push({ id: tableId, position });
+      byProject.set(projectId, list);
+    }
+
+    for (const [projectId, projectMoves] of byProject.entries()) {
+      const schema = await getProjectSchema(projectId);
+      const now = Date.now();
+      const positionById = new Map(projectMoves.map((move) => [move.id, move.position]));
+
+      schema.tables = schema.tables.map((table) => {
+        const position = positionById.get(table.id);
+        if (!position) {
+          return table;
+        }
+
+        return {
+          ...table,
+          position,
+          updatedAt: now,
+        };
+      });
+
+      schema.exportedAt = now;
+      await putProjectSchema(projectId, schema);
+    }
+  });
 }
 
 export async function deleteTable(id: string): Promise<void> {
-  const projectId = tableProjectMap.get(id);
-  const run = async () => {
+  return withSchemaLock(async () => {
     const match = await findTableById(id);
     if (!match) return;
 
@@ -398,12 +398,7 @@ export async function deleteTable(id: string): Promise<void> {
     match.schema.exportedAt = now;
 
     await putProjectSchema(match.schema.project.id, match.schema);
-  };
-
-  if (projectId) {
-    return withSchemaLock(projectId, run);
-  }
-  return run();
+  });
 }
 
 // ============================================================================
@@ -413,8 +408,7 @@ export async function deleteTable(id: string): Promise<void> {
 export async function createColumn(
   data: Omit<Column, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
-  const projectId = tableProjectMap.get(data.tableId);
-  const run = async () => {
+  return withSchemaLock(async () => {
     const tableMatch = await findTableById(data.tableId);
     if (!tableMatch) throw new Error('Table not found');
 
@@ -437,12 +431,7 @@ export async function createColumn(
     await putProjectSchema(tableMatch.schema.project.id, tableMatch.schema);
 
     return column.id;
-  };
-
-  if (projectId) {
-    return withSchemaLock(projectId, run);
-  }
-  return run();
+  });
 }
 
 export async function getColumn(id: string): Promise<Column | undefined> {
@@ -465,9 +454,7 @@ export async function updateColumn(
   id: string,
   updates: Partial<Omit<Column, 'id' | 'tableId' | 'createdAt'>>
 ): Promise<void> {
-  const tableId = columnTableMap.get(id);
-  const projectId = tableId ? tableProjectMap.get(tableId) : undefined;
-  const run = async () => {
+  return withSchemaLock(async () => {
     const match = await findColumnById(id);
     if (!match) throw new Error('Column not found');
 
@@ -487,18 +474,11 @@ export async function updateColumn(
     match.schema.exportedAt = now;
 
     await putProjectSchema(match.schema.project.id, match.schema);
-  };
-
-  if (projectId) {
-    return withSchemaLock(projectId, run);
-  }
-  return run();
+  });
 }
 
 export async function deleteColumn(id: string): Promise<void> {
-  const tableId = columnTableMap.get(id);
-  const projectId = tableId ? tableProjectMap.get(tableId) : undefined;
-  const run = async () => {
+  return withSchemaLock(async () => {
     const match = await findColumnById(id);
     if (!match) return;
 
@@ -515,46 +495,43 @@ export async function deleteColumn(id: string): Promise<void> {
     match.schema.exportedAt = now;
 
     await putProjectSchema(match.schema.project.id, match.schema);
-  };
-
-  if (projectId) {
-    return withSchemaLock(projectId, run);
-  }
-  return run();
+  });
 }
 
 export async function reorderColumns(tableId: string, columnIds: string[]): Promise<void> {
-  const tableMatch = await findTableById(tableId);
-  if (!tableMatch) throw new Error('Table not found');
+  return withSchemaLock(async () => {
+    const tableMatch = await findTableById(tableId);
+    if (!tableMatch) throw new Error('Table not found');
 
-  const now = Date.now();
-  const indexById = new Map(columnIds.map((id, index) => [id, index]));
+    const now = Date.now();
+    const indexById = new Map(columnIds.map((id, index) => [id, index]));
 
-  tableMatch.schema.columns = tableMatch.schema.columns.map((column) => {
-    if (column.tableId !== tableId) {
-      return column;
-    }
+    tableMatch.schema.columns = tableMatch.schema.columns.map((column) => {
+      if (column.tableId !== tableId) {
+        return column;
+      }
 
-    const orderIndex = indexById.get(column.id);
-    if (orderIndex === undefined) {
-      return column;
-    }
+      const orderIndex = indexById.get(column.id);
+      if (orderIndex === undefined) {
+        return column;
+      }
 
-    return {
-      ...column,
-      orderIndex,
-      updatedAt: now,
-    };
+      return {
+        ...column,
+        orderIndex,
+        updatedAt: now,
+      };
+    });
+
+    tableMatch.schema.tables = tableMatch.schema.tables.map((table) => (
+      table.id === tableId
+        ? { ...table, updatedAt: now }
+        : table
+    ));
+    tableMatch.schema.exportedAt = now;
+
+    await putProjectSchema(tableMatch.schema.project.id, tableMatch.schema);
   });
-
-  tableMatch.schema.tables = tableMatch.schema.tables.map((table) => (
-    table.id === tableId
-      ? { ...table, updatedAt: now }
-      : table
-  ));
-  tableMatch.schema.exportedAt = now;
-
-  await putProjectSchema(tableMatch.schema.project.id, tableMatch.schema);
 }
 
 // ============================================================================
@@ -567,33 +544,35 @@ export async function createRelationship(
     validateDataTypes?: boolean;
   }
 ): Promise<string> {
-  const schema = await getProjectSchema(data.projectId);
+  return withSchemaLock(async () => {
+    const schema = await getProjectSchema(data.projectId);
 
-  const sourceColumn = schema.columns.find((column) => column.id === data.sourceColumnId);
-  const targetColumn = schema.columns.find((column) => column.id === data.targetColumnId);
+    const sourceColumn = schema.columns.find((column) => column.id === data.sourceColumnId);
+    const targetColumn = schema.columns.find((column) => column.id === data.targetColumnId);
 
-  if (!sourceColumn || !targetColumn) {
-    throw new Error('Source or target column not found');
-  }
+    if (!sourceColumn || !targetColumn) {
+      throw new Error('Source or target column not found');
+    }
 
-  const validateDataTypes = options?.validateDataTypes ?? true;
-  if (validateDataTypes && sourceColumn.dataType !== targetColumn.dataType) {
-    throw new Error('Column data types must match');
-  }
+    const validateDataTypes = options?.validateDataTypes ?? true;
+    if (validateDataTypes && sourceColumn.dataType !== targetColumn.dataType) {
+      throw new Error('Column data types must match');
+    }
 
-  const now = Date.now();
-  const relationship: Relationship = {
-    id: crypto.randomUUID(),
-    ...data,
-    createdAt: now,
-    updatedAt: now,
-  };
+    const now = Date.now();
+    const relationship: Relationship = {
+      id: crypto.randomUUID(),
+      ...data,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  schema.relationships.push(relationship);
-  schema.exportedAt = now;
-  await putProjectSchema(data.projectId, schema);
+    schema.relationships.push(relationship);
+    schema.exportedAt = now;
+    await putProjectSchema(data.projectId, schema);
 
-  return relationship.id;
+    return relationship.id;
+  });
 }
 
 export async function getRelationship(id: string): Promise<Relationship | undefined> {
@@ -621,33 +600,37 @@ export async function updateRelationship(
   id: string,
   updates: Partial<Omit<Relationship, 'id' | 'projectId' | 'createdAt'>>
 ): Promise<void> {
-  const match = await findRelationshipById(id);
-  if (!match) throw new Error('Relationship not found');
+  return withSchemaLock(async () => {
+    const match = await findRelationshipById(id);
+    if (!match) throw new Error('Relationship not found');
 
-  const now = Date.now();
-  const nextRelationship: Relationship = {
-    ...match.relationship,
-    ...updates,
-    updatedAt: now,
-  };
+    const now = Date.now();
+    const nextRelationship: Relationship = {
+      ...match.relationship,
+      ...updates,
+      updatedAt: now,
+    };
 
-  match.schema.relationships = match.schema.relationships.map((relationship) => (
-    relationship.id === id ? nextRelationship : relationship
-  ));
-  match.schema.exportedAt = now;
+    match.schema.relationships = match.schema.relationships.map((relationship) => (
+      relationship.id === id ? nextRelationship : relationship
+    ));
+    match.schema.exportedAt = now;
 
-  await putProjectSchema(match.schema.project.id, match.schema);
+    await putProjectSchema(match.schema.project.id, match.schema);
+  });
 }
 
 export async function deleteRelationship(id: string): Promise<void> {
-  const match = await findRelationshipById(id);
-  if (!match) return;
+  return withSchemaLock(async () => {
+    const match = await findRelationshipById(id);
+    if (!match) return;
 
-  const now = Date.now();
-  match.schema.relationships = match.schema.relationships.filter((relationship) => relationship.id !== id);
-  match.schema.exportedAt = now;
+    const now = Date.now();
+    match.schema.relationships = match.schema.relationships.filter((relationship) => relationship.id !== id);
+    match.schema.exportedAt = now;
 
-  await putProjectSchema(match.schema.project.id, match.schema);
+    await putProjectSchema(match.schema.project.id, match.schema);
+  });
 }
 
 // ============================================================================
@@ -699,39 +682,41 @@ export async function getProjectStats(projectId: string) {
 }
 
 export async function duplicateTable(tableId: string, newPosition?: TablePosition): Promise<string> {
-  const match = await findTableById(tableId);
-  if (!match) throw new Error('Table not found');
+  return withSchemaLock(async () => {
+    const match = await findTableById(tableId);
+    if (!match) throw new Error('Table not found');
 
-  const now = Date.now();
-  const newTableId = crypto.randomUUID();
+    const now = Date.now();
+    const newTableId = crypto.randomUUID();
 
-  const newTable: TableEntity = {
-    ...match.table,
-    id: newTableId,
-    name: `${match.table.name}_copy`,
-    position: newPosition || { x: match.table.position.x + 50, y: match.table.position.y + 50 },
-    createdAt: now,
-    updatedAt: now,
-  };
+    const newTable: TableEntity = {
+      ...match.table,
+      id: newTableId,
+      name: `${match.table.name}_copy`,
+      position: newPosition || { x: match.table.position.x + 50, y: match.table.position.y + 50 },
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  const sourceColumns = match.schema.columns
-    .filter((column) => column.tableId === tableId)
-    .sort((a, b) => a.orderIndex - b.orderIndex);
+    const sourceColumns = match.schema.columns
+      .filter((column) => column.tableId === tableId)
+      .sort((a, b) => a.orderIndex - b.orderIndex);
 
-  const newColumns: Column[] = sourceColumns.map((column) => ({
-    ...column,
-    id: crypto.randomUUID(),
-    tableId: newTableId,
-    createdAt: now,
-    updatedAt: now,
-  }));
+    const newColumns: Column[] = sourceColumns.map((column) => ({
+      ...column,
+      id: crypto.randomUUID(),
+      tableId: newTableId,
+      createdAt: now,
+      updatedAt: now,
+    }));
 
-  match.schema.tables.push(newTable);
-  match.schema.columns.push(...newColumns);
-  match.schema.exportedAt = now;
+    match.schema.tables.push(newTable);
+    match.schema.columns.push(...newColumns);
+    match.schema.exportedAt = now;
 
-  await putProjectSchema(match.schema.project.id, match.schema);
-  return newTableId;
+    await putProjectSchema(match.schema.project.id, match.schema);
+    return newTableId;
+  });
 }
 
 export async function isTableNameUnique(projectId: string, tableName: string, excludeTableId?: string): Promise<boolean> {

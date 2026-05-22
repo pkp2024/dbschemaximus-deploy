@@ -125,11 +125,21 @@ async function importToFrontend(schema: SchemaExport, projectId: string): Promis
   }
 
   // Import columns
+  const frontendColumnCounters = new Map<string, number>();
   for (const column of schema.columns) {
     const newTableId = tableIdMap.get(column.tableId);
     if (!newTableId) {
       console.warn(`Skipping column ${column.name}: table not found`);
       continue;
+    }
+
+    let orderIndex: number;
+    if (column.orderIndex !== undefined && column.orderIndex !== null) {
+      orderIndex = column.orderIndex;
+    } else {
+      const counter = frontendColumnCounters.get(newTableId) ?? 0;
+      orderIndex = counter;
+      frontendColumnCounters.set(newTableId, counter + 1);
     }
 
     const newColumnId = await dbOps.createColumn({
@@ -145,7 +155,7 @@ async function importToFrontend(schema: SchemaExport, projectId: string): Promis
       isAutoIncrement: column.isAutoIncrement ?? false,
       defaultValue: column.defaultValue,
       description: column.description,
-      orderIndex: column.orderIndex ?? 0,
+      orderIndex,
     });
     columnIdMap.set(column.id, newColumnId);
   }
@@ -237,6 +247,7 @@ async function importToBackend(schema: SchemaExport, projectId: string): Promise
   });
 
   const importedColumns: Column[] = [];
+  const importColumnCounters = new Map<string, number>();
   for (const source of schema.columns) {
     const newTableId = tableIdMap.get(source.tableId);
     if (!newTableId) {
@@ -245,6 +256,15 @@ async function importToBackend(schema: SchemaExport, projectId: string): Promise
 
     const newId = crypto.randomUUID();
     columnIdMap.set(source.id, newId);
+
+    let orderIndex: number;
+    if (source.orderIndex !== undefined && source.orderIndex !== null) {
+      orderIndex = source.orderIndex;
+    } else {
+      const counter = importColumnCounters.get(newTableId) ?? 0;
+      orderIndex = counter;
+      importColumnCounters.set(newTableId, counter + 1);
+    }
 
     importedColumns.push({
       ...source,
@@ -255,7 +275,7 @@ async function importToBackend(schema: SchemaExport, projectId: string): Promise
       isPrimaryKey: source.isPrimaryKey ?? false,
       isUnique: source.isUnique ?? false,
       isAutoIncrement: source.isAutoIncrement ?? false,
-      orderIndex: source.orderIndex ?? 0,
+      orderIndex,
       createdAt: now,
       updatedAt: now,
     });

@@ -276,8 +276,9 @@ export default function PropertiesPanel() {
                         <div className="space-y-2">
                           <Label className="text-xs text-slate-600">Table Name</Label>
                           <Input
-                            value={table.name}
-                            onChange={(e) => handleUpdateTableName(e.target.value)}
+                            key={table.id + '-name'}
+                            defaultValue={table.name}
+                            onBlur={(e) => handleUpdateTableName(e.target.value)}
                             className="font-medium h-8"
                           />
                         </div>
@@ -285,8 +286,9 @@ export default function PropertiesPanel() {
                         <div className="space-y-2">
                           <Label className="text-xs text-slate-600">Description</Label>
                           <Input
-                            value={table.description || ''}
-                            onChange={(e) => handleUpdateTableDescription(e.target.value)}
+                            key={table.id + '-desc'}
+                            defaultValue={table.description || ''}
+                            onBlur={(e) => handleUpdateTableDescription(e.target.value)}
                             placeholder="Optional description"
                             className="h-8"
                           />
